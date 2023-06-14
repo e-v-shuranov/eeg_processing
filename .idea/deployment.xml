@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="evgeniy@10.199.11.56:22 password (3)" remoteFilesAllowedToDisappearOnAutoupload="false">
+    <serverData>
+      <paths name="evgeniy@10.199.11.56:22 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/eeg_processing" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="evgeniy@10.199.11.56:22 password (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/evgeniy/eeg_processing" local="$PROJECT_DIR$" />
+            <mapping />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="evgeniy@10.199.11.56:22 password (3)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/evgeniy/eeg_processing" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
