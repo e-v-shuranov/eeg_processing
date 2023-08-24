@@ -1,6 +1,6 @@
 mmidb:
   name: "Physionet MMIDB"
-  toplevel: /<path/to>/physionet.org/files/eegmmidb/
+  toplevel: /home/data/eegmmidb_1.0.0/eeg-motor-movementimagery-dataset-1.0.0/
   tmin: 0
   tlen: 6
   data_max: 0.001

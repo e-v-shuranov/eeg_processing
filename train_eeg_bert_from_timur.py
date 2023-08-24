@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 
 import torch
 from bert_conv_custom import BertConfig, BertEncoder
@@ -485,6 +485,51 @@ def worker_init_fn(worker_id):
     torch_seed = torch.initial_seed()
     random.seed(torch_seed + worker_id)
     np.random.seed((torch_seed + worker_id) % 2 ** 30)
+
+def train_bert_eeg_short():
+    model = EEGEmbedder()
+
+    train_dataset = TEST(train_data, train_label, train_mean_std, HSE_chls, train_correct)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=0,
+                                               drop_last=True, worker_init_fn=worker_init_fn)
+
+    test_dataset = TEST(test_data, test_label, test_mean_std, HSE_chls, test_correct)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=0, drop_last=True,
+                                              worker_init_fn=worker_init_fn)
+    model.train()
+
+    lr_d = 1e-6
+
+    training_epochs1 = 10000 // len(train_loader)
+
+    optim = torch.optim.AdamW(model.parameters(), lr=lr_d, weight_decay=1)
+    model.to(device)
+
+    loss_func = torch.nn.CrossEntropyLoss()
+
+
+    for epoch in range(training_epochs1):
+        train_loss_list1 = []
+        for batch in train_loader:
+            # batch = train_dataset.__getitem__(i)
+            optim.zero_grad()
+            placeholder = torch.zeros((batch['anchor'].shape[0], 1, 512)) - 5
+            ae, _ = model(
+                batch['anchor'].to(device),
+                None,
+                batch['channels'].long().to(device),
+                placeholder.to(device))
+            loss = loss_func(ae.view(-1, 2), batch['label'].to(device).long())
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            mean_loss = loss.item()
+            train_loss_list1.append(mean_loss)
+            optim.step()
+
+        print('epoch',epoch,'Loss: {}\t'.format(np.mean(train_loss_list1)))
+
+
+
 def train_bert_eeg():
     model = EEGEmbedder()
     # mitsar_chls, HSE_chls = init_chnls()
@@ -565,6 +610,7 @@ def train_bert_eeg():
         train_loss_list = []
         preds_train = []
         reals_train = []
+        train_loss_list1 = []
         for batch in train_loader:
             # batch = train_dataset.__getitem__(i)
             optim.zero_grad()
@@ -582,12 +628,13 @@ def train_bert_eeg():
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             mean_loss = loss.item()
+            train_loss_list1.append(mean_loss)
             acc_step += 1
             steps += 1
             optim.step()
             # scheduler.step()
-            if steps % 500 == 0:
-                print('Loss: {}\t'.format(mean_loss))
+            # if steps % 500 == 0:
+            #     print('Loss: {}\t'.format(mean_loss))
 
             if steps != 0 and steps % 1000 == 0:
                 der = 0
@@ -626,7 +673,7 @@ def train_bert_eeg():
                 #             preds_[np.where(preds[:, 1] >= th)] = 1
                 fscore = precision_recall_fscore_support(reals, preds.argmax(-1))[2][1]
                 print(precision_recall_fscore_support(reals, preds.argmax(-1)))
-                print('1 epoch:',epoch,'training_epochs1',training_epochs1)
+                # print('1 epoch:',epoch,'training_epochs1',training_epochs1)
 
                 set(reals)
                 # set(reals)
@@ -642,6 +689,9 @@ def train_bert_eeg():
                 train_loss_list = []
                 preds_train = []
                 reals_train = []
+
+        print('epoch',epoch,'Loss: {}\t'.format(np.mean(train_loss_list1)))
+
 
     n_epoch = training_epochs1
 # -------------- train additional training_epochs1 = 15000--------why?-----------------------------------------------------
@@ -879,15 +929,15 @@ def check_results(model, test_loader):
     plt.plot(reals[:500])
     plt.show()
 def main():
-    model, test_loader = train_bert_eeg()
-    #
-    torch.save(model, '/home/evgeniy/eeg_processing/models/model_v1.npy')
+    model, test_loader = train_bert_eeg_short()
 
-    # test_dataset = TEST(test_data, test_label, test_mean_std, HSE_chls, test_correct)
-    # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=0, drop_last=True,
-    #                                           worker_init_fn=worker_init_fn)
+    torch.save(model, '/home/evgeniy/eeg_processing/models/model_v2.npy')
+    #
+    test_dataset = TEST(test_data, test_label, test_mean_std, HSE_chls, test_correct)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=0, drop_last=True,
+                                              worker_init_fn=worker_init_fn)
     # model = torch.load('/home/evgeniy/eeg_processing/models/model_v1.npy')
-    # model.eval()
+    model.eval()
 
     check_results(model, test_loader)
 

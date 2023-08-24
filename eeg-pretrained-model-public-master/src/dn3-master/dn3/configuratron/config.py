@@ -129,14 +129,15 @@ class ExperimentConfig:
             relative_directory = self.experiment.get('relative_directory', None)
 
         self.datasets = dict()
-        for i, name in enumerate(usable_datasets):
-            if name in ds_entries.keys():
-                self.datasets[name] = DatasetConfig(name, ds_entries[name], deep1010=self._make_deep1010,
-                                                    samples=self.global_samples, sfreq=self.global_sfreq,
-                                                    preload=preload, return_trial_ids=return_trial_ids,
-                                                    relative_directory=relative_directory)
-            else:
-                raise DN3ConfigException("Could not find {} in datasets".format(name))
+        if usable_datasets != None:
+            for i, name in enumerate(usable_datasets):
+                if name in ds_entries.keys():
+                    self.datasets[name] = DatasetConfig(name, ds_entries[name], deep1010=self._make_deep1010,
+                                                        samples=self.global_samples, sfreq=self.global_sfreq,
+                                                        preload=preload, return_trial_ids=return_trial_ids,
+                                                        relative_directory=relative_directory)
+                else:
+                    raise DN3ConfigException("Could not find {} in datasets".format(name))
 
         print("Configuratron found {} datasets.".format(len(self.datasets), "s" if len(self.datasets) > 0 else ""))
 

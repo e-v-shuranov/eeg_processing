@@ -4,6 +4,11 @@ import sys
 PROJECT_ROOT = dirname(dirname(dirname(dirname(abspath(__file__)))))
 sys.path.append(join(PROJECT_ROOT, 'third_party', 'fairseq'))
 
+
+PROJECT_ROOT = dirname(dirname(dirname(dirname(dirname(abspath(__file__))))))
+fairseq_root = join(PROJECT_ROOT, 'fairseq-main')
+sys.path.append(fairseq_root)
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -13,6 +18,10 @@ from fairseq.modules import TransposeLast, Fp32LayerNorm, Fp32GroupNorm
 
 from examples.data2vec.models.data2vec2 import Data2VecMultiModel, Data2VecMultiConfig
 from examples.data2vec.data.modality import Modality
+
+
+PROJECT_ROOT = dirname(dirname(dirname(dirname(abspath(__file__)))))
+sys.path.append(join(PROJECT_ROOT, 'src'))
 
 from eeg.globals import WEIGHTS_DIR
 from eeg.models.base import Module
