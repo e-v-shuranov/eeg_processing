@@ -1,4 +1,3 @@
-# РАБОТАЕТ на наших данных. не трогать! детали см. в гуглдок
 import argparse
 import math
 import os
@@ -41,6 +40,11 @@ HSE_chls = ['Fp1', 'Fz', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7',
     'CP5', 'CP1', 'Pz', 'P3', 'P7', 'O1', 'Oz', 'O2', 'P4', 'P8', 'CP6',
     'CP2', 'Cz', 'C4', 'T8', 'FC6', 'FC2', 'F4', 'F8', 'FP2']
 HSE_chls = [i.upper() for i in HSE_chls]
+
+mitsar_chls = ['Fp1', 'Fp2', 'FZ', 'FCz', 'Cz', 'Pz', 'O1', 'O2', 'F3', 'F4',
+               'F7', 'F8', 'C3', 'C4', 'T3', 'T4', 'P3', 'P4', 'T5', 'T6', 'A1', 'A2']
+mitsar_chls = [i.upper() for i in mitsar_chls]
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Finetune a transformers model on a text classification task")
@@ -397,60 +401,6 @@ class CustomDataset_EMO(Dataset):
 
         return batch
 
-
-class TEST(Dataset):
-    def __init__(self, path):
-        super(TEST, self).__init__()
-        self.main_path = path
-        self.paths = path
-        # self.paths = ['{}/{}'.format(self.main_path, i) for i in os.listdir(self.main_path)]
-
-    def __len__(self):
-        return len(self.paths)
-
-    def __getitem__(self, idx):
-        path = self.paths[idx]
-        # take 60s of recording with specified shift
-        key = False
-        while (key == False):
-            try:
-                sample = np.load(path, allow_pickle=True).item()['value']
-                key = True
-            except Exception as e:
-                print("Path: {} is broken ".format(path), e)
-                path = np.random.choice(self.paths, 1)[0]
-                # sample = np.load(path, allow_pickle=True).item()['value']
-        real_len = sample.shape[0]
-        # if np.random.choice([0, 1], p=[0.9, 0.1]):
-        #     real_len = np.random.randint(real_len // 2, real_len)
-
-        sample = sample[:real_len]
-        # sample = torch.from_numpy(sample[:6000].astype(np.float32)).clone()
-        channels_ids = [i for i, val in enumerate(mitsar_chls) if i != 3]
-
-        # choose 2 random channels
-        channels_to_train = np.random.choice(channels_ids, 2, replace=False)
-        channels_vector = torch.tensor((channels_to_train))
-        sample = sample[:, channels_to_train]
-
-        sample_norm = (sample - tuh_filtered_stat_vals['min_vals_filtered'][channels_vector]) / (
-                    tuh_filtered_stat_vals['max_vals_filtered'][channels_vector] -
-                    tuh_filtered_stat_vals['min_vals_filtered'][channels_vector] + 1e-6)
-        # sample_norm = sample_norm * 2 - 1
-        # _, mask = masking(sample_norm)
-
-        if sample_norm.shape[0] < 6000:
-            sample_norm = np.pad(sample_norm, ((0, 6000 - sample_norm.shape[0]), (0, 0)))
-
-        attention_mask = torch.ones(6000)
-        attention_mask[real_len:] = 0
-        return {'anchor': torch.from_numpy(sample_norm).float(),
-                # 'label': sample_label,
-                # 'anchor_masked': torch.from_numpy(sample_masked).float(),
-                # 'mask': torch.tensor(mask),
-                'channels': channels_vector,
-                'attention_mask': attention_mask}
-
 class CustomDataset_EEG_TUH(Dataset):
     def __init__(self, main, sep, sr, audio_column_name, duration_column_name, min_duration, max_duration, labels, norm, chls, path):
         # self.main = main
@@ -666,7 +616,7 @@ class DataCollatorForWav2Vec2Pretraining:
         # sample randomly masked indices
         # self.model.config.mask_time_prob = 0.5    # -------------  ошибка на 2й эпохе , похоже что недобирал негативных семплов  значение по умолчанию 0,05
         # self.model.config.mask_time_length = 2     # ------------- по умолчанию 10, ошибка изза слишком коротких записей/или частоты дискретизации..
-        self.model.config.mask_time_prob = 0.25  #    0.065
+        self.model.config.mask_time_prob = 0.6  #    0.065
         # self.model.config.mask_time_prob = 0.065   #    0.065
         self.model.config.mask_time_length = 10  # ЭТО НЕ СЕКУНДЫ!! это выходы со сверток feature extractor. если сигнал длинны 768 то после сверток длинна выхода будет всего лиш 2, и 10 никак не сделать.
         mask_time_indices = _compute_mask_indices(
@@ -760,6 +710,65 @@ def Emo_audio_data_upload():
 #
 #     return result
 
+class TEST(Dataset): #torch.utils.data.Dataset):
+    def __init__(self, path):
+        super(TEST, self).__init__()
+        self.main_path = path
+        self.paths = path
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, idx):
+        path = self.paths[idx]
+        # take 60s of recording with specified shift
+        key = False
+        while (key == False):
+            try:
+                sample = np.load(path, allow_pickle=True).item()
+                key = True
+            except Exception as e:
+                print("Path: {} is broken ".format(path), e)
+                path = np.random.choice(self.paths, 1)[0]
+
+        signal = sample['value_pure']
+        real_len = signal.shape[0]
+        channels_ids = [i for i, val in enumerate(sample['channels']) if i != 3 and val in mitsar_chls]
+
+        # choose 2 random channels
+        # channels_to_train = np.random.choice(channels_ids, 2, replace=False)
+        # channels_vector = torch.tensor((channels_to_train))
+
+        # use all available
+        # channels_to_train = channels_ids
+        channels_to_train = 0
+        channels_vector = torch.tensor((channels_to_train))
+        signal = signal[:, channels_to_train]
+
+        # remove normalization for now with within channel z-norm
+        # sample_norm = (sample - tuh_filtered_stat_vals['min_vals_filtered'][channels_vector]) / (tuh_filtered_stat_vals['max_vals_filtered'][channels_vector] - tuh_filtered_stat_vals['min_vals_filtered'][channels_vector] + 1e-6)
+        sample_norm_mean = signal.mean()
+        sample_norm_std = np.std(signal)
+
+        signal_norm = (signal - sample_norm_mean) / (sample_norm_std)
+
+        if signal_norm.shape[0] < 6000:
+            signal_norm = np.pad(signal_norm, ((0, 6000 - signal_norm.shape[0]), (0, 0)))
+
+        attention_mask = torch.ones(6000)
+        attention_mask[real_len:] = 0
+        return {'input_values': torch.from_numpy(signal_norm).float(),
+                # 'label': sample_label,
+                # 'anchor_masked': torch.from_numpy(sample_masked).float(),
+                # 'mask': torch.tensor(mask),
+                # 'channels': channels_vector,
+                'attention_mask': attention_mask}
+import random
+def worker_init_fn(worker_id):
+    torch_seed = torch.initial_seed()
+    random.seed(torch_seed + worker_id)
+    np.random.seed((torch_seed + worker_id) % 2**30)
+
 def main():
     # See all possible arguments in src/transformers/args.py
     # or by passing the --help flag to this script.
@@ -805,38 +814,23 @@ def main():
     # )
     args.max_duration_in_seconds = 60
     # Download data
-    train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts = load_data_v7()
-    train_dataset = CustomDataset_EEG_v7(
-        # args.train_datasets,
-        # train_dataset_EMO,
-        train_data,
-        sep=args.separator,
-        audio_column_name=args.audio_column_name,
-        duration_column_name=args.duration_column_name,
-        sr=256,
-        min_duration=args.min_duration_in_seconds,
-        max_duration=args.max_duration_in_seconds,
-        labels = train_label,
-        norm = train_mean_std,
-        chls = HSE_chls)
+    # train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts = load_data_v7()
+    # train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts = load_data_TUH()
+    splitted_paths = ['/home/data/TUH_pretrain.filtered_1_40.v2.splited/{}'.format(i) for i in
+                      os.listdir('/home/data/TUH_pretrain.filtered_1_40.v2.splited/')]
+    train_dataset = TEST(splitted_paths[:-15000])
+    # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0,
+    #                                            drop_last=True, worker_init_fn=worker_init_fn)
+
+    test_dataset = TEST(splitted_paths[-15000:])
+    # test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=0, drop_last=True,
+    #                                           worker_init_fn=worker_init_fn)
 
 
-    val_dataset = CustomDataset_EEG_v7(
-        # args.val_datasets,
-        # eval_dataset_EMO,
-        test_data,
-        sep=args.separator,
-        audio_column_name=args.audio_column_name,
-        duration_column_name=args.duration_column_name,
-        sr=256,
-        min_duration=args.min_duration_in_seconds,
-        max_duration=args.max_duration_in_seconds,
-        labels=test_label,
-        norm=test_mean_std,
-        chls=HSE_chls)
+
 
     # Load feature_extractor
-    feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(args.model_name_or_path, sampling_rate = 256)
+    feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(args.model_name_or_path, sampling_rate = 100)
     # only normalized-inputs-training is supported
     if not feature_extractor.do_normalize:
         raise ValueError(
@@ -844,7 +838,7 @@ def main():
         )
 
     # Load model config
-    config = Wav2Vec2Config.from_pretrained(args.model_name_or_path, sampling_rate = 256)  #  sampling_rate = 256 - не работает, задается только через Wav2Vec2FeatureExtractor но пока оставлю как напоминание
+    config = Wav2Vec2Config.from_pretrained(args.model_name_or_path, sampling_rate = 100)  #  sampling_rate = 256  или  100 - не работает, задается только через Wav2Vec2FeatureExtractor но пока оставлю как напоминание
     if not config.do_stable_layer_norm or config.feat_extract_norm != "layer":
         raise ValueError(
             "PreTraining is only supported for ``config.do_stable_layer_norm=True`` and"
@@ -855,7 +849,7 @@ def main():
     model = Wav2Vec2ForPreTraining(config)
     if args.load_from_pretrained is not None:
         try:
-            model = model.from_pretrained(args.model_name_or_path, sampling_rate = 256)
+            model = model.from_pretrained(args.model_name_or_path, sampling_rate = 100)  # for TUH 100 for our  256
         except:
             print("!!!!! Warning: Pretrained model may not exist. Start training from Scratch")
 
@@ -871,17 +865,20 @@ def main():
     train_dataloader = DataLoader(
         train_dataset,
         collate_fn=data_collator,
-        batch_size=args.per_device_train_batch_size,
+        batch_size=64,                 # args.per_device_train_batch_size,
         shuffle=True,
         num_workers=16,
         pin_memory=True,
-        prefetch_factor=16
+        prefetch_factor=16,
+        worker_init_fn=worker_init_fn,
+        drop_last=True,
     )
 
     eval_dataloader = DataLoader(
-        val_dataset,
+        test_dataset,
         collate_fn=data_collator,
-        batch_size=args.per_device_eval_batch_size,
+        batch_size=64,                #args.per_device_eval_batch_size,
+        worker_init_fn=worker_init_fn,
         num_workers=16
     )
 

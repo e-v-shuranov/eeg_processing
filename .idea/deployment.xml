@@ -1,7 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="evgeniy@10.199.11.56:22 password (3)" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="evg_s@10.199.125.34:22 password" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
+    <option name="confirmBeforeUploading" value="false" />
     <serverData>
+      <paths name="eeg34">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/media/hdd/evgeniy/eeg_processing" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="evg_s@10.199.125.34:22 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/media/hdd/evgeniy/eeg_processing" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="evgeniy@10.199.11.56:22 password">
         <serverdata>
           <mappings>

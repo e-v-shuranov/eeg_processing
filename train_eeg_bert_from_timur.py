@@ -400,6 +400,85 @@ def init_chnls():
 
 HSE_chls, mitsar_chls  = init_chnls()
 
+
+def load_data_HSE_math_stage1():
+    # basepath ='/home/evgeniy/eeg_data/v100'
+    # basepath2 = '/home/data/HSE_math_all/processed/v5'
+    basepath_56 = '/home/data/HSE_math_all//processed/v7'
+    basepath_56_v5 = '/home/data/HSE_math_all/processed/v5'
+    basepath_34 = '/media/hdd/data/HSE_math_all/processed/v7'
+    basepath_34_v5 = '/media/hdd/data/HSE_math_all/processed/v5'
+
+    basepath = basepath_34
+    basepath2 = basepath_34_v5
+    # train_data = np.load('/home/data/HSE_math_all//processed/v7/train_signal.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    # test_data = np.load('/home/data/HSE_math_all/processed/v7/test_signal.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    #
+    # train_label = np.load('/home/data/HSE_math_all/processed/v7/train_label.REMAP.baselined_v2.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    # test_label = np.load('/home/data/HSE_math_all/processed/v7/test_label.REMAP.baselined_v2.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    #
+    # _train_label = np.load('/home/data/HSE_math_all/processed/v7/train_label.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    # _test_label = np.load('/home/data/HSE_math_all/processed/v7/test_label.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    #
+    # train_correct = np.load('/home/data/HSE_math_all/processed/v7/train_correct.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    # test_correct = np.load('/home/data/HSE_math_all/processed/v7/test_correct.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    #
+    # train_mean_std = np.load('/home/data/HSE_math_all/processed/v7/train_mean_std.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    # test_mean_std = np.load('/home/data/HSE_math_all/processed/v7/test_mean_std.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+
+    train_data = np.load(basepath + '/train_signal.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    test_data = np.load(basepath + '/test_signal.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+    train_label = np.load(basepath + '/train_label.REMAP.baselined_v2.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    test_label = np.load(basepath + '/test_label.REMAP.baselined_v2.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+    _train_label = np.load(basepath + '/train_label.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    _test_label = np.load(basepath + '/test_label.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+    train_correct = np.load(basepath + '/train_correct.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    test_correct = np.load(basepath + '/test_correct.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+    train_mean_std = np.load(basepath + '/train_mean_std.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+    test_mean_std = np.load(basepath + '/test_mean_std.non_filtered.precise_split.256Hz.npy',allow_pickle=True)
+
+
+
+    len(train_data), len(train_label)
+
+    train_data = [val for i, val in enumerate(train_data) if _train_label[i] not in [0]]
+    train_correct = [val for i, val in enumerate(train_correct) if _train_label[i] not in [0]]
+    train_mean_std = [val for i, val in enumerate(train_mean_std) if _train_label[i] not in [0]]
+    # train_label = [val for i, val in enumerate(train_label) if val not in [0]]
+
+    test_data = [val for i, val in enumerate(test_data) if _test_label[i] not in [0]]
+    test_correct = [val for i, val in enumerate(test_correct) if _test_label[i] not in [0]]
+    test_mean_std = [val for i, val in enumerate(test_mean_std) if _test_label[i] not in [0]]
+    # test_label = [val for i, val in enumerate(test_label) if val not in [0]]
+
+    len(train_data), len(train_label)
+
+    channels_meta = {'mean': [], 'std': []}
+    channels_meta['mean'] = (np.concatenate([train_data, test_data]).reshape(np.concatenate([train_data, test_data]).shape[0] * np.concatenate([train_data, test_data]).shape[1], -1).mean(0))
+    channels_meta['std'] = (np.concatenate([train_data, test_data]).reshape(np.concatenate([train_data, test_data]).shape[0] * np.concatenate([train_data, test_data]).shape[1], -1).std(0))
+
+    train_data_ts = np.load(basepath2 + '/train_signal.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+    test_data_ts = np.load(basepath2 + '/test_signal.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+
+    train_label_ts = np.load(basepath2 + '/train_label.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+    test_label_ts = np.load(basepath2 + '/test_label.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+
+    train_mean_std_ts = np.load(basepath2 + '/train_mean_std.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+    test_mean_std_ts = np.load(basepath2 + '/test_mean_std.non_filtered.precise_split.al.256Hz.npy', allow_pickle=True)
+
+
+    channels_meta_ts = {'mean': [], 'std': []}
+    channels_meta_ts['mean'] = (np.concatenate([train_data_ts.tolist() + test_data_ts.tolist()]).reshape(-1, 28).mean(0))
+    channels_meta_ts['std'] = (np.concatenate([train_data_ts.tolist() + test_data_ts.tolist()]).reshape(-1, 28).std(0))
+
+    return train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts
+
+
 def load_data():
     basepath ='/home/evgeniy/eeg_data/v100'
     basepath2 = '/home/data/HSE_math_all/processed/v5'
@@ -479,7 +558,7 @@ def load_data():
 
 
 # ---------------------------------Training-----------------------------------------------------------------------
-train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts = load_data()
+train_data, train_label, train_mean_std, train_correct, test_data, test_label, test_mean_std, test_correct, test_data_ts, test_label_ts, test_mean_std_ts, train_data_ts, train_label_ts, train_mean_std_ts = load_data_HSE_math_stage1()
 
 def worker_init_fn(worker_id):
     torch_seed = torch.initial_seed()
