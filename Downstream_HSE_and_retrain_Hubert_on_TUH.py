@@ -120,7 +120,7 @@ class PositionalEncoding(torch.nn.Module):
 class InputEmbedder(torch.nn.Module):
     def __init__(self, hidden_size=128, chnls=len(HSE_Stage2_channels)):
         super().__init__()
-
+        MAX_EEG_CHANNELS = 32
         self.hidden_size = hidden_size
         self.chnls = chnls
         self.time_reduced = 0
@@ -139,7 +139,7 @@ class InputEmbedder(torch.nn.Module):
 
 
 
-        self.ch_embedder = torch.nn.Embedding(chnls, self.ch_emb_size)
+        self.ch_embedder = torch.nn.Embedding(MAX_EEG_CHANNELS, self.ch_emb_size)
 
         # [batch x  (hidden_size * 512) x 1] ->[batch x (32*hidden_size) x 1]  repeating time_reduced times
         # self.multichanel_representation = torch.nn.Sequential(
@@ -314,7 +314,7 @@ class EEGEmbedder(torch.nn.Module):
 
             claster_prediction = self.HuBert_classification(encoder_output)
 
-            return claster_prediction, negative_predict, curent_mask, negative_mask
+            return claster_prediction, negative_predict, curent_mask, negative_mask, split_point
         else:
             embedding = torch.cat([cls_token, curent_embeding, end_token], 1) # must be curent_embeding.shape[0]  usual  about 80
             embedding = self.pos_encoder(embedding)
@@ -477,15 +477,17 @@ class TEST_TUH_PREPROCESS(torch.utils.data.Dataset):
                 'attention_mask': attention_mask,
                 'features': torch.from_numpy(df_st_eeg.to_numpy()).float()}
 
-
+Dict_with_cluster_labels = {}
 class TEST_TUH(torch.utils.data.Dataset):
-    def __init__(self, path, feature_with_labels_path_save, not_pretrain = False): #, tuh_filtered_stat_vals):
+    def __init__(self, path, feature_with_labels_path_save = "", not_pretrain = False): #, tuh_filtered_stat_vals):
         super(TEST_TUH, self).__init__()
         self.main_path = path
         self.paths = path
+        if os.path.exists(feature_with_labels_path_save):
+            with open(feature_with_labels_path_save, 'rb') as f:
+                global Dict_with_cluster_labels
+                Dict_with_cluster_labels = pickle.load(f)
         self.not_pretrain = not_pretrain
-        with open(feature_with_labels_path_save, 'rb') as f:
-            self.Dict_with_cluster_labels = pickle.load(f)
 
     def __len__(self):
         return len(self.paths)
@@ -524,8 +526,8 @@ class TEST_TUH(torch.utils.data.Dataset):
             df_st_eeg = pd.concat([lst_st_feat, indices], axis=1).dropna()
             class_from_clusterisation = None
         else:
-            df_st_eeg = self.Dict_with_cluster_labels[path][0]
-            class_from_clusterisation = self.Dict_with_cluster_labels[path][1]
+            df_st_eeg = Dict_with_cluster_labels[path][0]
+            class_from_clusterisation = Dict_with_cluster_labels[path][1]
 
         attention_mask = torch.ones(3000)
         attention_mask[real_len:] = 0
@@ -924,22 +926,22 @@ def pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_sa
     if continue_train:
         model.load_state_dict(torch.load(last_step), strict=False)
 
-    # splitted_paths = ['/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/{}'.format(i) for i in
-    #                   os.listdir('/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/')]
+    splitted_paths = ['/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/{}'.format(i) for i in
+                      os.listdir('/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/')]
 
-    splitted_paths = ['/media/hdd/data/TUH_splited.examples/{}'.format(i) for i in
-                      os.listdir('/media/hdd/data/TUH_splited.examples/')]
+    # splitted_paths = ['/media/hdd/data/TUH_splited.examples/{}'.format(i) for i in
+    #                   os.listdir('/media/hdd/data/TUH_splited.examples/')]
 
     # tuh_filtered_stat_vals = np.load('/home/data/TUH_pretrain.filtered_1_40/stat_vals.npy', allow_pickle=True).item()
-    # train_test_split = -15000
-    train_test_split = -6
-    # batch_sz = 16
-    batch_sz = 2
+    train_test_split = -15000
+    # train_test_split = -6
+    batch_sz = 16
+    # batch_sz = 2
     train_dataset = TEST_TUH(splitted_paths[:train_test_split],feature_with_labels_path_save) #,tuh_filtered_stat_vals)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_sz, shuffle=True, num_workers=1,
                                                drop_last=True, worker_init_fn=worker_init_fn)
 
-    test_dataset = TEST_TUH(splitted_paths[train_test_split:],feature_with_labels_path_save) #,tuh_filtered_stat_vals)
+    test_dataset = TEST_TUH(splitted_paths[train_test_split:]) #,tuh_filtered_stat_vals)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_sz, shuffle=False, num_workers=1, drop_last=True,
                                               worker_init_fn=worker_init_fn)
 
@@ -955,11 +957,11 @@ def pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_sa
     training_epochs1 = 1000000 // len(train_loader)
     # optim = torch.optim.AdamW(model.classifier.parameters(), lr=lr_d, weight_decay=1)
     optim = torch.optim.AdamW(model.parameters(), lr=lr_d, weight_decay=1)
-    model_test = torch.nn.DataParallel(model)
-    model_test.to('cuda:0')
-
-    # model_test = model
-    # model_test.to(device)
+    # model_test = torch.nn.DataParallel(model)
+    # model_test.to('cuda:0')
+    #
+    model_test = model
+    model_test.to(device)
 
     writer = SummaryWriter('logs')
 
@@ -981,10 +983,10 @@ def pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_sa
             with torch.no_grad():
                 for batch in test_loader:
                     claster_prediction, negative_predict, curent_mask, negative_mask = model_test(
-                        batch['current'],
-                        batch['negative'],
-                        batch['channels'],
-                        batch['attention_mask'],
+                        batch['current'].to(device),
+                        batch['negative'].to(device),
+                        batch['channels'].to(device),
+                        batch['attention_mask'].to(device),
                         True
                     )
                     cl = torch.cat(0, batch['classes'], 0, batch['classes_negative'], 0)
@@ -1030,17 +1032,20 @@ def pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_sa
             print(batch['channels'].shape)
             print(batch['attention_mask'].shape)
 
-            claster_prediction, negative_predict, curent_mask, negative_mask = model_test(
-                batch['current'],
-                batch['negative'],
-                batch['channels'],
-                batch['attention_mask'],
+            claster_prediction, negative_predict, curent_mask, negative_mask, split_point = model_test(
+                batch['current'].to(device),
+                batch['negative'].to(device),
+                batch['channels'].to(device),
+                batch['attention_mask'].to(device),
                 True
             )
             print('model_test')
-            cl = torch.cat(0, batch['classes'], 0, batch['classes_negative'], 0)
-            ms = torch.cat(0, curent_mask, 0, negative_mask, 0)
-            not_ms = torch.cat(1, curent_mask, 1, negative_mask, 1)
+            # embedding_masked = torch.cat([cls_token, curent_masked[:,:split_point,:], end_token, negative_masked[:,:curent_embeding.shape[1] - split_point,:], end_token], 1) # must be curent_embeding.shape[0]  usual  about 80
+
+            cl = torch.cat([torch.zeros(16, 1).to(device), batch['classes'].to(device)[:,:split_point], torch.zeros(16, 1).to(device), batch['classes_negative'].to(device)[:,:curent_mask.shape[1] - split_point], torch.zeros(16, 1).to(device)],1)
+            ms = torch.cat([torch.zeros(16, 1).to(device), curent_mask[:,:split_point], torch.zeros(16, 1).to(device), negative_mask[:,:curent_mask.shape[1] - split_point], torch.zeros(16, 1).to(device)],1).to(torch.bool)
+            not_ms = torch.logical_not(ms).to(torch.bool)
+             Почему у claster_prediction размер 16 90 и неажиданно 10 ? а не просто 16 х 90
             Classification_M = claster_prediction[ms]
             Corresct_M_classes = cl[ms]
             Classification_U = claster_prediction[not_ms]
@@ -1337,14 +1342,18 @@ from sklearn.decomposition import PCA
 # import numpy as np
 def create_clusters_TUH(loadinf_features = False, Test_number_of_clusters = False):
     continue_mode = True
+    Test_number_of_clusters = False
+    Store_kmeans_results = True
+
+    # feature_path_save = '/media/hdd/data/TUH_features/features_dict.pickle'
+    # feature_with_labels_path_save = '/media/hdd/data/TUH_features/features_with_labels_dict.pickle'
+    # feature_for_clustering_path_save = '/media/hdd/data/TUH_features/features_for_clustering_array.npy'
+    feature_path_save = '/media/hdd/data/TUH_features/features_dict'
+    feature_with_labels_path_save = '/media/hdd/data/TUH_features/features_with_labels_dict'
+    feature_for_clustering_path_save = '/media/hdd/data/TUH_features/features_for_clustering_array'
 
 
-    # print('Hello')
-    feature_path_save = '/media/hdd/data/TUH_features/features_dict.pickle'
-    feature_with_labels_path_save = '/media/hdd/data/TUH_features/features_with_labels_dict.pickle'
-    feature_for_clustering_path_save = '/media/hdd/data/TUH_features/features_for_clustering_array.npy'
-
-    if loadinf_features == False:
+    if Test_number_of_clusters:
         splitted_paths = ['/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/{}'.format(i) for i in
                           os.listdir('/media/hdd/data/TUH_pretrain.filtered_1_40.v2.splited/')]
         # splitted_paths = ['/media/hdd/data/TUH_splited.examples/{}'.format(i) for i in
@@ -1352,28 +1361,49 @@ def create_clusters_TUH(loadinf_features = False, Test_number_of_clusters = Fals
         #
         train_test_split = -15000
         # train_test_split = -6
-        train_dataset = TEST_TUH_PREPROCESS(splitted_paths[:train_test_split]) #,tuh_filtered_stat_vals)
-        test_dataset = TEST_TUH_PREPROCESS(splitted_paths[train_test_split:]) #,tuh_filtered_stat_vals)
-        tmp_dict = {}
+        train_dataset = TEST_TUH_PREPROCESS(splitted_paths[:train_test_split])  # ,tuh_filtered_stat_vals)
+        test_dataset = TEST_TUH_PREPROCESS(splitted_paths[train_test_split:])  # ,tuh_filtered_stat_vals)
         sample = train_dataset.__getitem__(0, True)
         number_of_frames_in_file = len(sample['features'])
         feature_size = sample['features'].shape[1]
         train_len = train_dataset.__len__()
         test_len = test_dataset.__len__()
 
-        array_for_clustering = np.zeros(shape=((train_len + test_len) * number_of_frames_in_file,feature_size))
+        indexes = [0, 100001, 146710, 161710]
+
+
+        # array_for_clustering = np.zeros(shape=((train_len + test_len) * number_of_frames_in_file, feature_size))
+        lll = (train_len + test_len) * number_of_frames_in_file
+        array_for_clustering = np.ones(shape=(lll,feature_size))
+
+    if loadinf_features == False:   # ШАГ 1 расчет фичей  реализованный в TEST_TUH_PREPROCESS
+        tmp_dict = {}
 
         current_time = int(round(time.time() * 1000))  # in millisec
 
         writer1 = SummaryWriter('Features_logs')
         last_index = 0
+        ii = 0
+        if continue_mode:
+            for i in range(0,10):
+                if i == 0:
+                    feature_path_save_curent = feature_path_save + ".pickle"
+                    feature_for_clustering_path_save_curent = feature_for_clustering_path_save + ".npy"
+                else:
+                    feature_path_save_curent = feature_path_save + "_" + str(i) + ".pickle"
+                    feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_" + str(i) + ".npy"
 
-        if os.path.exists(feature_path_save) and continue_mode:
-            with open(feature_path_save, 'rb') as f:
-                tmp_dict = pickle.load(f)
-            array_for_clustering = np.load(feature_for_clustering_path_save)
-            last_index = len(tmp_dict)
-            print("continue_mode, last_index: ", last_index)
+                if os.path.exists(feature_path_save_curent):
+                    with open(feature_path_save_curent, 'rb') as f:
+                        tmp_dict = pickle.load(f)
+                    if os.path.exists(feature_for_clustering_path_save_curent):
+                            array_for_clustering = np.load(feature_for_clustering_path_save_curent)
+                    last_index += len(tmp_dict)
+                    ii = i
+                    print("continue_mode, feature_path_save_curent:",feature_path_save_curent,"  last_index: ", last_index)
+
+        tmp_dict = {}
+
 
         for index in range(last_index, train_len):
             sample = train_dataset.__getitem__(index, True)
@@ -1390,14 +1420,27 @@ def create_clusters_TUH(loadinf_features = False, Test_number_of_clusters = Fals
                     current_time = new_current_time
                     print(" !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", index , "Time:", dt / 1000)
                     writer1.add_scalar('TrainTime ' + str(index) + str(dt / 1000),0 )
-            if continue_mode and index % 25000 == 0 and index!=0:
-                with open(feature_path_save, 'wb') as f:
+            if continue_mode and index % 50000 == 0 and index!=0:
+                feature_path_save_curent = feature_path_save + "_" + str(ii) + ".pickle"
+                feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_" + str(ii) + ".npy"
+                with open(feature_path_save_curent, 'wb') as f:
                     pickle.dump(tmp_dict, f, pickle.HIGHEST_PROTOCOL)
 
-                np.save(feature_for_clustering_path_save, array_for_clustering)
-                print("end iteration, index: ",index)
-                return
+                np.save(feature_for_clustering_path_save_curent, array_for_clustering)
+                print("end iteration, index: ",index," feature_path_save_curent:",feature_path_save_curent)
+                ii +=1
+                tmp_dict = {}
 
+        if continue_mode:
+            feature_path_save_curent = feature_path_save + "_" + str(ii) + ".pickle"
+            feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_" + str(ii) + ".npy"
+            with open(feature_path_save_curent, 'wb') as f:
+                pickle.dump(tmp_dict, f, pickle.HIGHEST_PROTOCOL)
+
+            np.save(feature_for_clustering_path_save_curent, array_for_clustering)
+            print("end iteration, index: ",index," feature_path_save_curent:",feature_path_save_curent)
+            ii +=1
+            tmp_dict = {}
 
         for index in range(test_len):
             sample = test_dataset.__getitem__(index, True)
@@ -1415,64 +1458,121 @@ def create_clusters_TUH(loadinf_features = False, Test_number_of_clusters = Fals
                     print("TEST !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", index , "Time:", dt / 1000)
                     writer1.add_scalar('TestTime '+ str(index) + str(dt / 1000),0)
 
+        if continue_mode:
+            feature_path_save_curent = feature_path_save + "_test_" + ".pickle"
+            feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_test_" + ".npy"
+            with open(feature_path_save_curent, 'wb') as f:
+                pickle.dump(tmp_dict, f, pickle.HIGHEST_PROTOCOL)
 
-        with open(feature_path_save, 'wb') as f:
-            pickle.dump(tmp_dict, f, pickle.HIGHEST_PROTOCOL)
-
-        np.save(feature_for_clustering_path_save, array_for_clustering)
+            np.save(feature_for_clustering_path_save_curent, array_for_clustering)
+            print("end iteration, index: ",index," feature_path_save_curent:",feature_path_save_curent)
+            ii +=1
+            tmp_dict = {}
+        else:
+            feature_path_save_curent = feature_path_save + "_all" + ".pickle"
+            feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_all" + ".npy"
+            with open(feature_path_save_curent, 'wb') as f:
+                pickle.dump(tmp_dict, f, pickle.HIGHEST_PROTOCOL)
+            np.save(feature_for_clustering_path_save_curent, array_for_clustering)
 
 
     else:
-        if Test_number_of_clusters == True:
+        if Test_number_of_clusters == True:   # ШАГ 2 определяем оптимальное количества кластеров к сожалению в память только 1/5 датасета влезла
 
-            #  Store tmp_dict and array_for_clustering ?
-            with open(feature_path_save, 'rb') as f:
-                tmp_dict = pickle.load(f)
-            array_for_clustering = np.load(feature_for_clustering_path_save)
+            last_index = 0
+            tmp_dict = {}
+            for i in range(0,3):
+                if i == 0:
+                    feature_path_save_curent = feature_path_save + ".pickle"
+                    feature_for_clustering_path_save_curent = feature_for_clustering_path_save + ".npy"
+                elif i == 2:
+                    feature_path_save_curent = feature_path_save + "_test_" + ".pickle"
+                    feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_test_" + ".npy"
+                else:
+                    feature_path_save_curent = feature_path_save + "_" + str(i-1) + ".pickle"
+                    feature_for_clustering_path_save_curent = feature_for_clustering_path_save + "_" + str(i-1) + ".npy"
 
-            # for n_digits in range(5, 100, 5):
-            #     pca = PCA(n_components=n_digits).fit(array_for_clustering)
-            #     array_for_clustering_pca = pca.transform(array_for_clustering)
+                if os.path.exists(feature_path_save_curent):
+                    # with open(feature_path_save_curent, 'rb') as f:
+                    #     tmp_dict_cur = pickle.load(f)
+                    #     tmp_dict.update(tmp_dict_cur)
+                    if os.path.exists(feature_for_clustering_path_save_curent):
+                        # X = np.load('X.npy', mmap_mode='r')
+                        array_for_clustering_cur = np.load(feature_for_clustering_path_save_curent, mmap_mode='r')
+                        # new_index = last_index + len(tmp_dict_cur)
+                        new_index = indexes[i+1]
+                        array_for_clustering[last_index * number_of_frames_in_file :  new_index * number_of_frames_in_file ] = array_for_clustering_cur[last_index * number_of_frames_in_file :  new_index * number_of_frames_in_file ]
+                        last_index = new_index
+                    print("continue_mode, feature_path_save_curent:",feature_path_save_curent,"  last_index: ", last_index)
+
+            # ШАГ 3 для выбранного количества кластеров (75) расчитываем номер кластера для каждого фрейма
+            if Store_kmeans_results == True:
+                k = 75
+                km = KMeans(n_clusters=k,n_init="auto")
+                km = km.fit(array_for_clustering[0:int(lll/5)])
+                clusters_array = km.predict(array_for_clustering)
+                feature_path_save_curent = feature_path_save + "_All_clusters.pickle"
+                np.save(feature_path_save_curent, clusters_array)
+                return
+
+            # Sum_of_squared_distances = []
+            # for k in range(1, 515):
+            #     km = KMeans(n_clusters=k,n_init="auto")
+            #     km = km.fit(array_for_clustering[0:int(lll/5)])
+            #     Sum_of_squared_distances.append(km.inertia_)
+            #
+            #     plt.plot(range(1, k+1), Sum_of_squared_distances, 'bx-')
+            #     plt.xlabel('k')
+            #     plt.ylabel('Sum_of_squared_distances')
+            #     plt.title('Elbow Method For Optimal k')
+            #     plt.show()
 
             Sum_of_squared_distances = []
-            for k in range(1, 25):
+            for k in range(70, 85):
                 km = KMeans(n_clusters=k,n_init="auto")
-                km = km.fit(array_for_clustering)
+                km = km.fit(array_for_clustering[0:int(lll/5)])
                 Sum_of_squared_distances.append(km.inertia_)
 
-            plt.plot(range(0, k), Sum_of_squared_distances, 'bx-')
-            plt.xlabel('k')
-            plt.ylabel('Sum_of_squared_distances')
-            plt.title('Elbow Method For Optimal k')
-            plt.show()
+                plt.plot(range(70, k+1), Sum_of_squared_distances, 'bx-')
+                plt.xlabel('k')
+                plt.ylabel('Sum_of_squared_distances')
+                plt.title('Elbow Method For Optimal k')
+                plt.show()
 
-            # 4 is already good, 12-15 - looks optimal
-            # with PCA result very close
 
-            # pca = PCA(n_components=n_digits).fit(data)
-            # kmeans = KMeans(n_clusters=2, random_state=0, n_init="auto").fit(array_for_clustering)
-        else:
-            with open(feature_path_save, 'rb') as f:
-                tmp_dict = pickle.load(f)
-            array_for_clustering = np.load(feature_for_clustering_path_save)
+
+        else:  # ШАГ 4 сохраняем для каждого файла набор расчитанных фичей и номер кластера в одном dictionary
+            last_index = 0
+            tmp_dict = {}
+            for i in range(0,3):
+                if i == 0:
+                    feature_path_save_curent = feature_path_save + ".pickle"
+                elif i == 2:
+                    feature_path_save_curent = feature_path_save + "_test_" + ".pickle"
+                else:
+                    feature_path_save_curent = feature_path_save + "_" + str(i-1) + ".pickle"
+                if os.path.exists(feature_path_save_curent):
+                    with open(feature_path_save_curent, 'rb') as f:
+                        tmp_dict_cur = pickle.load(f)
+                        tmp_dict.update(tmp_dict_cur)
+                    print("continue_mode, feature_path_save_curent:",feature_path_save_curent,"  last_index: ", last_index)
+
+            feature_path_save_curent = feature_path_save + "_All_clusters.pickle.npy"
+            if os.path.exists(feature_path_save_curent):
+                clusters_array = np.load(feature_path_save_curent)
+
+
             sample_features_len = 87
-            Dict_with_cluster_labels = {}
-            km = KMeans(n_clusters=15, n_init="auto")
-            km = km.fit(array_for_clustering)
-            clusters_array = km.labels_
-            # tmp_dict[sample['path']] = sample['features']
+            Dict_with_cluster_labels_tmp = {}
             i = 0
             for key in tmp_dict:
                 labels = clusters_array[i*sample_features_len:(i+1)*sample_features_len]
-                Dict_with_cluster_labels[key] = [tmp_dict[key],labels]
+                Dict_with_cluster_labels_tmp[key] = [tmp_dict[key],labels]
                 i = +1
 
-        with open(feature_with_labels_path_save, 'wb') as f:
-            pickle.dump(Dict_with_cluster_labels, f, pickle.HIGHEST_PROTOCOL)
+            with open(feature_with_labels_path_save, 'wb') as f:
+                pickle.dump(Dict_with_cluster_labels_tmp, f, pickle.HIGHEST_PROTOCOL)
 
-
-#  for key in likes:
-# ...     print(key, "->", likes[key])
 
 
 def main():
@@ -1486,11 +1586,11 @@ def main():
     classification_model_path_save = '/media/hdd/evgeniy/eeg_models/Classification_model_v1.npy'
     # classification_model_path_load = '/home/evgeniy/eeg_processing/models/Classification_model_v2.npy'
     classification_model_path_load = '/media/hdd/evgeniy/eeg_models/Classification_model_v2.npy'
-    feature_with_labels_path_save = '/media/hdd/data/TUH_features/features_with_labels_dict.pickle'
+    feature_with_labels_path_save = '/media/hdd/data/TUH_features/features_with_labels_dict'
 
     last_lt_scheduler_step_number = int((6000 + 9169 * (38-25)) / 8 ) # 38 я эпоха - стартуем мы с 25 так повелось, 9169  шага на эпоху, +6000 текущих шагов.
     # т.к. мы делаем backword и scheduler step только каждый 8й шаг то все делим на 8
-    # model, test_loader = pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_save, continue_train = False, last_lt_scheduler_step_number = last_lt_scheduler_step_number)
+    model, test_loader = pretrain_BERT_TUH(pretrain_path_save, last_step, feature_with_labels_path_save, continue_train = False, last_lt_scheduler_step_number = last_lt_scheduler_step_number)
 
     # print('pretrain results:',end="")
     # short_check_results(model, test_loader)
@@ -1513,5 +1613,5 @@ def main():
 if __name__ == '__main__':
     # a = torch.from_numpy(np.full((int(5*4/2), 2), [1, 2]).reshape((5,1,4)))
     print("Hello world")
-    create_clusters_TUH(loadinf_features=False)
-    # main()
+    # create_clusters_TUH(loadinf_features=True)
+    main()
